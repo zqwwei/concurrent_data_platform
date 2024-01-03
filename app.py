@@ -61,8 +61,13 @@ def check_condition(row, condition):
 @app.route('/', methods=['GET'])
 def query_data():
     query = request.args.get('query')
-    # Placeholder for query processing
-    return jsonify({'query': query, 'results': []})
+    if query:
+        conditions = parse_query(query)
+        csv_data = load_csv_data('test_data.csv')
+        results = filter_data(csv_data, conditions)
+        return jsonify({'query': query, 'results': results})
+    else:
+        return jsonify({'error': 'No query provided'}), 400
 
 # Start the server
 if __name__ == '__main__':
