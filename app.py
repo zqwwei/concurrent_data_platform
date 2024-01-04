@@ -12,7 +12,6 @@ def load_csv_data(file_path):
             data.append(row)
     return data
 
-# parse the query into column name, operator, and value
 def parse_query(query_str):
     conditions = re.split(r'\s+and\s+|\s+or\s+', query_str)
     parsed_conditions = []
@@ -27,20 +26,20 @@ def parse_query(query_str):
             parsed_conditions.append((column, operator, value))
         else:
             # error handling
-            print("Error parsing condition:", condition)
-            pass
+            raise ValueError("Error parsing condition: " + condition)
     return parsed_conditions
 
 
 # filter data to fetch rows match conditions
 def filter_data(data, conditions):
     filtered_data = []
-    # print(data, conditions)
+    # print(conditions)
     for row in data:
         match = all(check_condition(row, condition) for condition in conditions)
         if match:
             filtered_data.append(row)
     return filtered_data
+
 
 def check_condition(row, condition):
     column, operator, value = condition
@@ -60,22 +59,28 @@ def check_condition(row, condition):
 # Route to handle queries
 @app.route('/', methods=['GET'])
 def query_data():
-    query = request.args.get('query')
-    if query:
-        conditions = parse_query(query)
-        csv_data = load_csv_data('test_data.csv')
-        results = filter_data(csv_data, conditions)
-        return jsonify({'query': query, 'results': results})
-    else:
-        return jsonify({'error': 'No query provided'}), 400 # error message no query
+    try:
+        query = request.args.get('query')
+        if query:
+            conditions = parse_query(query)
+            csv_data = load_csv_data('test_data.csv')
+            results = filter_data(csv_data, conditions)
+            return jsonify({'query': query, 'results': results})
+        else:
+            # error handling
+            return jsonify({'error': 'No query provided'}), 400
+    # exception handling
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
 # Start the server
 if __name__ == '__main__':
     # app.run(debug=True, port=9527)
     
     csv_data = load_csv_data('test_data.csv')
-    # query = 'C1 == "Sample Text 1" and C2 == "Another \\"Sample\\""'
-    query = 'C1 == "Sample Text 1" and C2 &= "Another"'
+    query = 'C1 == "Sample Text 1" and C2 == "Another \\"Sample\\" "'
+    # query = 'C1 == "Sample Text 1" and C2 &= "Another"'
+    # query = ''
 
     conditions = parse_query(query)
     print(conditions)
