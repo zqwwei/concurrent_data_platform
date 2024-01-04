@@ -35,7 +35,7 @@ def parse_query(query_str):
 # filter data to fetch rows match conditions
 def filter_data(data, conditions):
     filtered_data = []
-    print(data, conditions)
+    # print(data, conditions)
     for row in data:
         match = all(check_condition(row, condition) for condition in conditions)
         if match:
@@ -67,16 +67,30 @@ def query_data():
         results = filter_data(csv_data, conditions)
         return jsonify({'query': query, 'results': results})
     else:
-        return jsonify({'error': 'No query provided'}), 400
+        return jsonify({'error': 'No query provided'}), 400 # error message no query
 
 # Start the server
 if __name__ == '__main__':
     # app.run(debug=True, port=9527)
     
     csv_data = load_csv_data('test_data.csv')
-    query = 'C1 == "Sample Text 1" and C2 == "Another \\"Sample\\""'
+    # query = 'C1 == "Sample Text 1" and C2 == "Another \\"Sample\\""'
+    query = 'C1 == "Sample Text 1" and C2 &= "Another"'
 
     conditions = parse_query(query)
     print(conditions)
     results = filter_data(csv_data, conditions)
     print(results)
+
+
+    # csv_data = load_csv_data('test_data.csv')
+    # test_queries = [
+    #     'C1 == "Sample Text 1"',
+    #     'C2 != "Unknown"',
+    #     'C3 $= "value 1"',
+    #     'C1 &= "Sample"'
+    # ]
+    # for query in test_queries:
+    #     conditions = parse_query(query)
+    #     results = filter_data(csv_data, conditions)
+    #     print(f"Query: {query}\nResults: {results}\nlen: {len(results)}\n")
