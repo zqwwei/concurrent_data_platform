@@ -1,6 +1,5 @@
 import csv
 import logging
-from threading_lib.read_write_lock import FairReadWriteLock
 
 class CSVFileManager:
     def __init__(self, filepath):
@@ -14,7 +13,6 @@ class CSVFileManager:
         self.filepath = filepath
         self.data = self.read()
         self.data_modified = False
-        self.lock = FairReadWriteLock()
 
     def read(self):
         """

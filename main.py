@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from csv_file_manager import CSVFileManager
 from data_filter import DataFilter
 from data_modifier import DataModifier
+from threading_lib.read_write_lock import FairReadWriteLock
 
 app = Flask(__name__)
 
@@ -30,6 +31,7 @@ class CSVDatabase:
         self.data_modifier = DataModifier(self.file_manager)
         # process check data: 
         self.data_filter = DataFilter(self.file_manager)
+        self.lock = FairReadWriteLock
 
     def query_data(self, query_str):
         """
@@ -38,9 +40,11 @@ class CSVDatabase:
         :param query_str: A SQL-like query string.
         :return: Filtered data based on the query.
         """
-        self.data_filter.parse_command(query_str)
-        results = self.data_filter.filter()
-        return results
+        with self.lock.read_lock():
+            self.data_filter.parse_command(query_str)
+            results = self.data_filter.filter()
+            self.lock.release_read()
+            return results
 
     def modify_data(self, command):
         """
@@ -48,10 +52,12 @@ class CSVDatabase:
 
         :param command: A SQL-like command for data modification.
         """
-        self.data_modifier.parse_command(command)
-        # write the change to csv
-        if self.file_manager.data_modified:
-            self.file_manager.write()
+        with self.lock.write_lock():
+            self.data_modifier.parse_command(command)
+            # write the change to csv
+            if self.file_manager.data_modified:
+                self.file_manager.write()
+            self.lock.release_write()
 
 
 # Initliaze CSVDatabase
