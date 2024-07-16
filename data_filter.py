@@ -43,7 +43,7 @@ class DataFilter:
 
         self.parsed_conditions = parsed_conditions
     
-    def filter(self):
+    def filter(self, command):
         """
         Filters data rows based on the parsed query conditions and returns a string
         representation of the filtered data rows, with values separated by commas and
@@ -52,10 +52,9 @@ class DataFilter:
         :param conditions: A list of tuples representing conditions (column, operator, value, logic).
         :return: A string representing the filtered rows of data.
         """
-        if not self.parsed_conditions:
-            raise RuntimeError("condition has not been set")
+        self.parsed_conditions = self.parse_command(command)
         
-        print(self.parsed_conditions)
+        # print(self.parsed_conditions)
         filtered_data = []
         for row in self.file_manager.data:
             match = False

@@ -31,7 +31,7 @@ class CSVDatabase:
         self.data_modifier = DataModifier(self.file_manager)
         # process check data: 
         self.data_filter = DataFilter(self.file_manager)
-        self.lock = FairReadWriteLock
+        self.lock = FairReadWriteLock()
 
     def query_data(self, query_str):
         """
@@ -41,9 +41,7 @@ class CSVDatabase:
         :return: Filtered data based on the query.
         """
         with self.lock.read_lock():
-            self.data_filter.parse_command(query_str)
-            results = self.data_filter.filter()
-            self.lock.release_read()
+            results = self.data_filter.filter(query_str)
             return results
 
     def modify_data(self, command):
@@ -57,7 +55,6 @@ class CSVDatabase:
             # write the change to csv
             if self.file_manager.data_modified:
                 self.file_manager.write()
-            self.lock.release_write()
 
 
 # Initliaze CSVDatabase
