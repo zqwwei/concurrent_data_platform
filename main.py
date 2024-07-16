@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 
 from csv_file_manager import CSVFileManager
-from query_parser import QueryParser
 from data_filter import DataFilter
 from data_modifier import DataModifier
 
@@ -29,7 +28,6 @@ class CSVDatabase:
         self.file_manager = CSVFileManager(filepath)
         # parse command, and process (insert, update, delete)
         self.data_modifier = DataModifier(self.file_manager)
-        self.query_parser = QueryParser()
         # process check data: 
         self.data_filter = DataFilter(self.file_manager)
 
@@ -40,10 +38,8 @@ class CSVDatabase:
         :param query_str: A SQL-like query string.
         :return: Filtered data based on the query.
         """
-        conditions = self.query_parser.parse(query_str)
-        # print(conditions)
-        # print(self.file_manager.data)
-        results = self.data_filter.filter(conditions)
+        self.data_filter.parse_command(query_str)
+        results = self.data_filter.filter()
         return results
 
     def modify_data(self, command):

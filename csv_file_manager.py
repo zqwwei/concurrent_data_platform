@@ -1,9 +1,9 @@
 import csv
 import logging
-# import threading
+from threading_lib.read_write_lock import FairReadWriteLock
 
 class CSVFileManager:
-    def __init__(self, filepath, write_interval=60):
+    def __init__(self, filepath):
         """
         Initializes the CSVFileManager to read data from the specified filepath
         and write changes to the file at specified intervals if data has been modified.
@@ -13,8 +13,8 @@ class CSVFileManager:
         """
         self.filepath = filepath
         self.data = self.read()
-        self.write_interval = write_interval
         self.data_modified = False
+        self.lock = FairReadWriteLock()
 
     def read(self):
         """

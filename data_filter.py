@@ -1,3 +1,5 @@
+import re
+
 class DataFilter:
     """
     A class for filtering data rows based on specified conditions.
@@ -13,8 +15,35 @@ class DataFilter:
         :param file_manager: The CSVFileManager instance whose data will be filtered.
         """
         self.file_manager = file_manager
+        self.parsed_conditions = None
 
-    def filter(self, conditions):
+    def parse_command(self, query_str):
+        """
+        Parses a query string into a list of conditions.
+
+        Each condition is represented as a tuple containing the column name or '*',
+        an operator ('==', '!=', '$=', '&='), the value to compare, and a logical
+        operator ('and', 'or') if any, indicating the relation to the next condition.
+
+        :param query_str: The query string to be parsed.
+        :return: A list of tuples representing the parsed conditions.
+        :raises ValueError: If the query string cannot be parsed.
+        """
+        # print(query_str)
+        matches = re.findall(r'(\*|[A-Za-z0-9_]+)\s*(==|!=|\$=|&=)\s*"(.*?)(?<!\\)"(\s+and\s+|\s+or\s+|$)', query_str, re.DOTALL)
+        # print(matches)
+        if not matches:
+            raise ValueError("Error parsing query: " + query_str)
+        
+        parsed_conditions = []
+        for column, operator, value, logic in matches:
+            # Handle escaped quotes
+            value = value.replace('\\"', '"')
+            parsed_conditions.append((column, operator, value, logic.strip())) # strip out space for and/or
+
+        self.parsed_conditions = parsed_conditions
+    
+    def filter(self):
         """
         Filters data rows based on the parsed query conditions and returns a string
         representation of the filtered data rows, with values separated by commas and
@@ -23,11 +52,15 @@ class DataFilter:
         :param conditions: A list of tuples representing conditions (column, operator, value, logic).
         :return: A string representing the filtered rows of data.
         """
+        if not self.parsed_conditions:
+            raise RuntimeError("condition has not been set")
+        
+        print(self.parsed_conditions)
         filtered_data = []
         for row in self.file_manager.data:
             match = False
             last_logic = 'and'
-            for i, condition in enumerate(conditions):
+            for i, condition in enumerate(self.parsed_conditions):
                 column, operator, value, logic = condition
                 condition_match = self.check_condition(row, (column, operator, value))
                 if last_logic == 'and':
