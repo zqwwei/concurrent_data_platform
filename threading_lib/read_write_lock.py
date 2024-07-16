@@ -43,3 +43,38 @@ class FairReadWriteLock:
         with self._read_ready:
             self._writer = False
             self._read_ready.notify_all()
+
+    def read_lock(self):
+        """Return a context manager for a read lock"""
+        return self._ReadLock(self)
+    
+    def write_lock(self):
+        """Return a context manager for a write lock"""
+        return self._WriteLock(self)
+
+    class _ReadLock:
+        """read lock context manager class"""
+
+        def __init__(self, rw_lock):
+            self.rw_lock = rw_lock
+
+        def __enter__(self):
+            self.rw_lock.acquire_read()
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            self.rw_lock.release_read()
+
+
+    class _WriteLock:
+        """write lock context manager class"""
+
+        def __init__(self, rw_lock):
+            self.rw_lock = rw_lock
+
+        def __enter__(self):
+            self.rw_lock.acquire_write()
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            self.rw_lock.release_write()
+
+
