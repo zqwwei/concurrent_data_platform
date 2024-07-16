@@ -41,8 +41,8 @@ class CSVDatabase:
         :return: Filtered data based on the query.
         """
         conditions = self.query_parser.parse(query_str)
-        print(conditions)
-        print(self.file_manager.data)
+        # print(conditions)
+        # print(self.file_manager.data)
         results = self.data_filter.filter(conditions)
         return results
 
@@ -75,7 +75,7 @@ def handle_request():
 
     if query:
         results = csv_database.query_data(query)
-        print(query, results)
+        # print(query, results)
         return jsonify({'result': results})
     elif job:
         csv_database.modify_data(job)
