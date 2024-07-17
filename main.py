@@ -1,9 +1,14 @@
 from flask import Flask, request, jsonify
-
+from concurrent.futures import ThreadPoolExecutor
 from csv_file_manager import CSVFileManager
 from data_filter import DataFilter
 from data_modifier import DataModifier
 from threading_lib.read_write_lock import FairReadWriteLock
+
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -19,7 +24,7 @@ class CSVDatabase:
         data_filter: An instance of DataFilter to filter data based on queries.
     """
 
-    def __init__(self, filepath):
+    def __init__(self, filepath, max_workers=10):
         """
         Initializes the CSVDatabase with the given CSV file path.
 
@@ -32,6 +37,7 @@ class CSVDatabase:
         # process check data: 
         self.data_filter = DataFilter(self.file_manager)
         self.lock = FairReadWriteLock()
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
     def query_data(self, query_str):
         """
@@ -58,11 +64,11 @@ class CSVDatabase:
 
 
 # Initliaze CSVDatabase
-csv_database = CSVDatabase('./test/test_dataset.csv')
+csv_database = CSVDatabase('./test/test_data.csv')
 
-# Route to handle queries and modify data
+# Route to handle queries
 @app.route('/', methods=['GET'])
-def handle_request():
+def handle_query_request():
     """
     Handles incoming requests for querying or modifying the CSV data.
     Expects either a 'query' or 'job' parameter in the URL.
@@ -70,20 +76,31 @@ def handle_request():
     :return: JSON response with the result of the query or modification.
     """
     query = request.args.get('query')
-    job = request.args.get('job')
-
     if query:
-        results = csv_database.query_data(query)
-        # print(query, results)
+        logger.debug(f"Received query: {query}")
+        future = csv_database.executor.submit(csv_database.query_data, query)
+        results = future.result()
+        logger.debug(f"Query results: {results}")
         return jsonify({'result': results})
-    elif job:
-        csv_database.modify_data(job)
-        return jsonify({'result': 'Success'})
     else:
+        logger.debug("No valid parameters provided")
         return jsonify({'msg': 'No valid parameters provided'}), 400
 
+# Route to handle data modification
+@app.route('/', methods=['POST'])
+def handle_modify_request():
+    data = request.get_json()
+    job = data.get('job')
+    if job:
+        logger.debug(f"Received job: {job}")
+        future = csv_database.executor.submit(csv_database.modify_data, job)
+        future.result()
+        logger.debug(f"Job result: Success")
+        return jsonify({'result': 'Success'})
+    else:
+        logger.debug("No valid job parameter provided")
+        return jsonify({'msg': 'No valid job parameter provided'}), 400
 
 # Main function to start the server
 if __name__ == '__main__':
-    # app.run(debug=True, port=9527)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, port=5000)

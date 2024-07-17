@@ -1,5 +1,8 @@
 import re
 from urllib.parse import unquote
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DataModifier:
     """
@@ -39,10 +42,10 @@ class DataModifier:
         :param command: A SQL-like INSERT command string.
         :raises ValueError: If the command format is invalid or the column count does not match.
         """
-        # print(command)
+        print(f"Command: {command}")
         pattern = r'((?:"(?:[^"\\]|\\.)*"\s*,\s*)*(?:"(?:[^"\\]|\\.)*"))'
         match = re.match(pattern, command)
-        # print(match)
+        print(f"Match: {match}")
         if not match:
             raise ValueError("Invalid INSERT command format.")
         
@@ -65,6 +68,7 @@ class DataModifier:
         :param values: A list of values to be inserted, corresponding to the CSV file's columns.
         """
         # create a dict with column names as key, values as vals
+        print(f"Inserting values: {values}")
         new_row = dict(zip(self.file_manager.data[0].keys(), values))
         self.file_manager.data.append(new_row)
         self.file_manager.data_modified = True
