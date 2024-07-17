@@ -41,7 +41,7 @@ class DataFilter:
             value = value.replace('\\"', '"')
             parsed_conditions.append((column, operator, value, logic.strip())) # strip out space for and/or
 
-        self.parsed_conditions = parsed_conditions
+        return parsed_conditions
     
     def filter(self, command):
         """
