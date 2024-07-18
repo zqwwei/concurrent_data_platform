@@ -4,7 +4,8 @@ from csv_file_manager import CSVFileManager
 from data_filter import DataFilter
 from data_modifier import DataModifier
 from threading_lib.read_write_lock import FairReadWriteLock
-
+from threading_lib.task_queue import LocalQueue
+import threading 
 import logging
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -37,7 +38,28 @@ class CSVDatabase:
         # process check data: 
         self.data_filter = DataFilter(self.file_manager)
         self.lock = FairReadWriteLock()
+        self.task_queue = LocalQueue()
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self._start_queue_consumer()
+
+    def _start_queue_consumer(self):
+        def consumer():
+            while True:
+                command = self.task_queue.get()
+                print(command)
+                if command is None:
+                    break
+                self._process_write_command(command)
+                self.task_queue.task_done()
+        consumer_thread = threading.Thread(target=consumer)
+        consumer_thread.daemon = True
+        consumer_thread.start()
+
+    def _process_write_command(self, command):
+        with self.lock.write_lock():
+            self.data_modifier.parse_command(command)
+            if self.file_manager.data_modified:
+                self.file_manager.write()  
 
     def query_data(self, query_str):
         """
@@ -56,11 +78,11 @@ class CSVDatabase:
 
         :param command: A SQL-like command for data modification.
         """
-        with self.lock.write_lock():
-            self.data_modifier.parse_command(command)
-            # write the change to csv
-            if self.file_manager.data_modified:
-                self.file_manager.write()
+        self.task_queue.put(command)
+
+    def stop_consumer(self):
+        self.task_queue.put(None)
+
 
 
 # Initliaze CSVDatabase
@@ -93,9 +115,7 @@ def handle_modify_request():
     job = data.get('job')
     if job:
         logger.debug(f"Received job: {job}")
-        future = csv_database.executor.submit(csv_database.modify_data, job)
-        future.result()
-        logger.debug(f"Job result: Success")
+        csv_database.modify_data(job)
         return jsonify({'result': 'Success'})
     else:
         logger.debug("No valid job parameter provided")
