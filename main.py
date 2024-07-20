@@ -4,9 +4,10 @@ from csv_file_manager import CSVFileManager
 from data_filter import DataFilter
 from data_modifier import DataModifier
 from threading_lib.read_write_lock import FairReadWriteLock
-from threading_lib.task_queue import LocalQueue
+from threading_lib.task_queue import LocalQueue, RabbitMQQueue
 import threading 
 import logging
+import time
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class CSVDatabase:
         data_filter: An instance of DataFilter to filter data based on queries.
     """
 
-    def __init__(self, filepath, max_workers=10):
+    def __init__(self, filepath, max_workers=10, batch_size=10, delay=5, use_rabbitmq=False):
         """
         Initializes the CSVDatabase with the given CSV file path.
 
@@ -38,26 +39,32 @@ class CSVDatabase:
         # process check data: 
         self.data_filter = DataFilter(self.file_manager)
         self.lock = FairReadWriteLock()
-        self.task_queue = LocalQueue()
+        self.task_queue = RabbitMQQueue() if use_rabbitmq else LocalQueue()
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self._start_queue_consumer()
+        self.batch_size = batch_size
+        self.delay = delay
+        self._start_batch_consumer()
 
-    def _start_queue_consumer(self):
-        def consumer():
+    def _start_batch_consumer(self):
+        def batch_processor():
             while True:
-                command = self.task_queue.get()
-                print(command)
-                if command is None:
-                    break
-                self._process_write_command(command)
-                self.task_queue.task_done()
-        consumer_thread = threading.Thread(target=consumer)
+                time.sleep(self.delay)
+                commands = self.task_queue.get(self.batch_size)
+                if commands:
+                    self._process_write_commands(commands)
+                    for _ in commands:
+                        self.task_queue.task_done()
+
+        consumer_thread = threading.Thread(target=batch_processor)
         consumer_thread.daemon = True
         consumer_thread.start()
 
-    def _process_write_command(self, command):
+    def _process_write_commands(self, commands):
         with self.lock.write_lock():
-            self.data_modifier.parse_command(command)
+            for command in commands:
+                if command is None:
+                    break
+                self.data_modifier.parse_command(command)
             if self.file_manager.data_modified:
                 self.file_manager.write()  
 
@@ -81,12 +88,12 @@ class CSVDatabase:
         self.task_queue.put(command)
 
     def stop_consumer(self):
-        self.task_queue.put(None)
+        self.task_queue.close()
 
 
 
 # Initliaze CSVDatabase
-csv_database = CSVDatabase('./test/test_data.csv')
+csv_database = CSVDatabase('./test/test_data.csv', use_rabbitmq=True)
 
 # Route to handle queries
 @app.route('/', methods=['GET'])
