@@ -1,4 +1,5 @@
 import requests
+import threading
 
 def send_query_request(url):
     try:
@@ -38,7 +39,27 @@ if __name__ == "__main__":
 
     modify_cases = [
         {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
-        {"job": "DELETE \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "INSERT \"Sample Text 3\", \"Another Sample C\", \"Value 3\""},
+        {"job": "UPDATE \"Sample Text 3\", \"C1\", \"Sample 3\""},
+        {"job": "DELETE \"Sample 3\""},
     ]
 
     # 并发查询测试
