@@ -57,6 +57,7 @@ class RabbitMQQueue(QueueInterface):
         for _ in range(count):
             method_frame, header_frame, body = self.channel.basic_get(queue=self.queue_name)
             if method_frame:
+                #  make sure messages processed
                 self.channel.basic_ack(method_frame.delivery_tag)
                 messages.append(body)
             else:
