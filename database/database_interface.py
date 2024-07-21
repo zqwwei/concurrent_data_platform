@@ -23,5 +23,5 @@ class DatabaseInterface(ABC):
         pass
 
     @abstractmethod
-    def query_records(self, query):
+    def query_records(self, query_conditions):
         pass
