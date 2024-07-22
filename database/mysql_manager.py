@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, MetaData
+from sqlalchemy import create_engine, Column, Integer, String, and_, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from database.database_interface import DatabaseInterface
@@ -48,16 +48,39 @@ class MySQLDatabase(DatabaseInterface):
     def query_records(self, query_conditions):
         session = self.Session()
         query = session.query(Record)
+        conditions_list = []
         for condition in query_conditions:
             column, operator, value, logic = condition
             if operator == '==':
-                query = query.filter(getattr(Record, column) == value)
+                cond = getattr(Record, column) == value
             elif operator == '!=':
-                query = query.filter(getattr(Record, column) != value)
+                cond = getattr(Record, column) != value
             elif operator == '$=':
-                query = query.filter(getattr(Record, column).ilike(f'%{value}%'))
+                cond = getattr(Record, column).ilike(f'%{value}%')
             elif operator == '&=':
-                query = query.filter(getattr(Record, column).contains(value))
+                cond = getattr(Record, column).contains(value)
+            else:
+                raise ValueError(f"Unsupported operator: {operator}")
+            
+            conditions_list.append((cond, logic))
+
+        # Combine conditions with AND/OR logic
+        combined_conditions = []
+        current_conditions = []
+
+        for cond, logic in conditions_list:
+            current_conditions.append(cond)
+            if logic.lower() == 'or':
+                combined_conditions.append(and_(*current_conditions))
+                current_conditions = []
+        
+        if current_conditions:
+            combined_conditions.append(and_(*current_conditions))
+        
+        if combined_conditions:
+            final_condition = or_(*combined_conditions)
+            query = query.filter(final_condition)
+
         result = query.all()
         session.close()
         return [record.to_dict() for record in result]

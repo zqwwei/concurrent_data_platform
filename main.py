@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
 from concurrent.futures import ThreadPoolExecutor
-from csv_file_manager import CSVFileManager
-from data_filter import DataFilter
-from data_modifier import DataModifier
+from database.csv_file_manager import CSVFileManager
+from database.mysql_manager import MySQLDatabase
+from business_logic import BusinessLogic
+# from data_filter import DataFilter
+# from data_modifier import DataModifier
 from threading_lib.read_write_lock import FairReadWriteLock
 from threading_lib.task_queue import LocalQueue, RabbitMQQueue
 import threading 
@@ -26,24 +28,35 @@ class CSVDatabase:
         data_filter: An instance of DataFilter to filter data based on queries.
     """
 
-    def __init__(self, filepath, max_workers=10, batch_size=10, delay=5, use_rabbitmq=False):
+    def __init__(self, db_type, db_url, max_workers=10, batch_size=10, delay=5, use_rabbitmq=False):
         """
         Initializes the CSVDatabase with the given CSV file path.
 
         :param filepath: Path to the CSV file.
         """
-        # store file, and manage read and write
-        self.file_manager = CSVFileManager(filepath)
-        # parse command, and process (insert, update, delete)
-        self.data_modifier = DataModifier(self.file_manager)
+        # # store file, and manage read and write
+        # self.file_manager = CSVFileManager(filepath)
+        # # parse command, and process (insert, update, delete)
+        # self.data_modifier = DataModifier(self.file_manager)
         # process check data: 
-        self.data_filter = DataFilter(self.file_manager)
+        # self.data_filter = DataFilter(self.file_manager)
         self.lock = FairReadWriteLock()
         self.task_queue = RabbitMQQueue() if use_rabbitmq else LocalQueue()
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         self.batch_size = batch_size
         self.delay = delay
+        self.db_type = db_type
+        self.db_url = db_url
+        self._init_db()
         self._start_batch_consumer()
+
+    def _init_db(self):
+        if self.db_type == 'csv':
+            self.db = CSVFileManager(self.db_url)
+        elif self.db_type == 'mysql':
+            self.db = MySQLDatabase(self.db_url)
+        else:
+            raise ValueError("Unsupported database type")
 
     def _start_batch_consumer(self):
         def batch_processor():
@@ -64,9 +77,11 @@ class CSVDatabase:
             for command in commands:
                 if command is None:
                     break
-                self.data_modifier.parse_command(command)
-            if self.file_manager.data_modified:
-                self.file_manager.write()  
+                # self.data_modifier.parse_command(command)
+            # if self.file_manager.data_modified:
+            #     self.file_manager.write()  
+                BusinessLogic.modify_data(command)
+                self.db.write()
 
     def query_data(self, query_str):
         """
@@ -76,8 +91,8 @@ class CSVDatabase:
         :return: Filtered data based on the query.
         """
         with self.lock.read_lock():
-            results = self.data_filter.filter(query_str)
-            return results
+            return BusinessLogic.query_data(query_str)
+             
 
     def modify_data(self, command):
         """
@@ -93,7 +108,19 @@ class CSVDatabase:
 
 
 # Initliaze CSVDatabase
-csv_database = CSVDatabase('./test/test_data.csv', use_rabbitmq=True)
+@app.route('/init', method=['POST'])
+def initialize_database():
+    data = request.get_json()
+    db_type = data.get('db_type')
+    db_url = data.get('db_url')
+    use_rabbitmq = data.get('use_rabbitmq', False)
+
+    if not db_type or not db_type:
+        return jsonify({'msg': 'db_type and db_url are required'}), 400
+    
+    global csv_database
+    csv_database = CSVDatabase(db_type, db_url, use_rabbitmq)
+    return jsonify({'result': 'Database initialized successfully'})
 
 # Route to handle queries
 @app.route('/', methods=['GET'])
