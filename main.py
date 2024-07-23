@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 from concurrent.futures import ThreadPoolExecutor
 from database.csv_file_manager import CSVFileManager
 from database.mysql_manager import MySQLDatabase
@@ -10,11 +11,17 @@ from threading_lib.task_queue import LocalQueue, RabbitMQQueue
 import threading 
 import logging
 import time
+import config
+import pymysql
+
+pymysql.install_as_MySQLdb()
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config.from_object('config')
+db = SQLAlchemy(app)
 
 
 class CSVDatabase:
@@ -49,6 +56,7 @@ class CSVDatabase:
         self.db_url = db_url
         self._init_db()
         self._start_batch_consumer()
+        self._init_business_logic()
 
     def _init_db(self):
         if self.db_type == 'csv':
@@ -57,6 +65,9 @@ class CSVDatabase:
             self.db = MySQLDatabase(self.db_url)
         else:
             raise ValueError("Unsupported database type")
+    
+    def _init_business_logic(self):
+        BusinessLogic.initialize(self.db)
 
     def _start_batch_consumer(self):
         def batch_processor():
@@ -106,21 +117,24 @@ class CSVDatabase:
         self.task_queue.close()
 
 
-
 # Initliaze CSVDatabase
-@app.route('/init', method=['POST'])
+@app.route('/init', methods=['POST'])
 def initialize_database():
     data = request.get_json()
     db_type = data.get('db_type')
     db_url = data.get('db_url')
     use_rabbitmq = data.get('use_rabbitmq', False)
+    max_workers = data.get('max_workers', 10)
 
-    if not db_type or not db_type:
+    if not db_type or not db_url:
         return jsonify({'msg': 'db_type and db_url are required'}), 400
     
     global csv_database
-    csv_database = CSVDatabase(db_type, db_url, use_rabbitmq)
-    return jsonify({'result': 'Database initialized successfully'})
+    try:
+        csv_database = CSVDatabase(db_type, db_url, max_workers=max_workers, use_rabbitmq=use_rabbitmq)
+        return jsonify({'result': 'Database initialized successfully'})
+    except ValueError as e:
+        return jsonify({'msg': str(e)}), 400
 
 # Route to handle queries
 @app.route('/', methods=['GET'])
