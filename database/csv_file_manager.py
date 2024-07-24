@@ -114,3 +114,6 @@ class CSVFileManager(DatabaseInterface):
             return value in cell_value
         else:
             raise ValueError(f"Unsupported operator: {operator}")
+
+    def get_columns(self):
+        return list(self.data[0].keys()) if self.data else []

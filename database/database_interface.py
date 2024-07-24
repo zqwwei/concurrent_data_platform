@@ -25,3 +25,7 @@ class DatabaseInterface(ABC):
     @abstractmethod
     def query_records(self, query_conditions):
         pass
+
+    @abstractmethod
+    def get_columns(self):
+        pass
