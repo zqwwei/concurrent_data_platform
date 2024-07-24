@@ -22,7 +22,6 @@ class MySQLDatabase(DatabaseInterface):
             logging.error(f"Table '{table_name}' not found in the database.")
             return None
         
-        # 获取表的主键列
         primary_key_columns = [col.name for col in table.primary_key.columns]
 
         if not primary_key_columns:
@@ -30,7 +29,7 @@ class MySQLDatabase(DatabaseInterface):
         
         logging.debug(f"Primary key columns for table '{table_name}': {primary_key_columns}")
 
-        # 创建一个动态的 ORM 类
+        # create ORM class
         class DynamicRecord(Base):
             __table__ = table
             __mapper_args__ = {
@@ -89,9 +88,9 @@ class MySQLDatabase(DatabaseInterface):
             query = session.query(self.Record)
             for key, value in conditions.items():
                 query = query.filter(getattr(self.Record, key) == value)
-            query.update({getattr(self.Record, target_column): new_value})
+            updated_count = query.update({getattr(self.Record, target_column): new_value})
             session.commit()
-            logging.debug(f"Updated {updated} records")
+            logging.debug(f"Updated {updated_count} records")
         except Exception as e:
             logging.error(f"Error updating records: {e}")
             session.rollback()

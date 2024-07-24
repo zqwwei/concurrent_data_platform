@@ -1,6 +1,6 @@
 import unittest
 from main import app  
-from csv_file_manager import CSVFileManager
+from csv_manager import CSVFileManager
 import os
 
 class IntegrationTestCSVDatabase(unittest.TestCase):
