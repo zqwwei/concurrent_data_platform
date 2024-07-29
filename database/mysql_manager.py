@@ -61,8 +61,10 @@ class MySQLDatabase(DatabaseInterface):
             session.commit()
             logging.debug("Record added successfully")
             # update Redis cache
-            self.redis.set(f'record:{new_record.C1}', new_record)
-            self.redis.add_to_bloom_filter(f'record:{new_record.C1}')
+            record_key = f'record:{new_record.C1}'
+            self.redis.set(record_key, new_record.to_dict())
+            self.redis.add_to_bloom_filter(record_key)
+            self._invalidate_related_query_cache(new_record.C1)
         except Exception as e:
             logging.error(f"Error adding record: {e}")
             session.rollback()
@@ -83,7 +85,7 @@ class MySQLDatabase(DatabaseInterface):
             # update Redis cache
             for record in records:
                 self.redis.delete(f'record:{record.C1}')
-                self._invalidate_query_cache(f'record:{record.C1}')
+                self._invalidate_related_query_cache(record.C1)
         except Exception as e:
             logging.error(f"Error deleting records: {e}")
             session.rollback()
@@ -105,7 +107,7 @@ class MySQLDatabase(DatabaseInterface):
             for record in records:
                 updated_record = session.query(self.Record).filter(self.Record.C1 == record.C1).first()
                 self.redis.set(f'record:{updated_record.C1}', updated_record)
-                self._invalidate_query_cache(f'record:{updated_record.C1}')
+                self._invalidate_related_query_cache(updated_record.C1)
         except Exception as e:
             logging.error(f"Error updating records: {e}")
             session.rollback()
@@ -173,6 +175,7 @@ class MySQLDatabase(DatabaseInterface):
                 self.redis.set(query_key, record_ids, ex=3600)
                 for record in result:
                     self.redis.set(f"record:{record.C1}", record.to_dict(), ex=3600)
+                    self.redis.add_related_query_key(record.C1, query_key)
                 return [record.to_dict() for record in result]
             except Exception as e:
                 logging.error(f"Error querying records: {e}")
@@ -187,10 +190,12 @@ class MySQLDatabase(DatabaseInterface):
             return record.to_dict()
         finally:
             session.close()
-    
-    
-    def _invalidate_query_cache(self, record_id_key):
-        self.redis.delete(record_id_key)
+
+    def _invalidate_related_query_cache(self, record_id):
+        related_query_keys = self.redis.get_related_query_keys(record_id)
+        for query_key in related_query_keys:
+            self.redis.delete(query_key)
+
     
     def get_columns(self):
         return self.column_names
