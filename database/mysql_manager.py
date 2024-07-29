@@ -117,7 +117,7 @@ class MySQLDatabase(DatabaseInterface):
     def query_records(self, query_conditions):
         logging.debug(f"Querying records with conditions: {query_conditions}")
         query_key = f"query:{query_conditions}"
-        cached_result = self.redis.get(query_key)
+        cached_result = self.redis.get_query_result(query_key)
         if cached_result:
             logging.debug("Cache hit for query")
             results = []
@@ -172,9 +172,10 @@ class MySQLDatabase(DatabaseInterface):
                 result = query.all()
                 logging.debug(f"Queried {len(result)} records")
                 record_ids = [record.C1 for record in result]
-                self.redis.set(query_key, record_ids, ex=3600)
+                self.redis.set_query_result(query_key, record_ids, ex=3600)
                 for record in result:
-                    self.redis.set(f"record:{record.C1}", record.to_dict(), ex=3600)
+                    record_key = f"record:{record.C1}"
+                    self.redis.set(record_key, record.to_dict(), ex=3600)
                     self.redis.add_related_query_key(record.C1, query_key)
                 return [record.to_dict() for record in result]
             except Exception as e:
@@ -196,6 +197,5 @@ class MySQLDatabase(DatabaseInterface):
         for query_key in related_query_keys:
             self.redis.delete(query_key)
 
-    
     def get_columns(self):
         return self.column_names
