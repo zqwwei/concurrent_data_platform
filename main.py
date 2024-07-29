@@ -39,12 +39,6 @@ class CSVDatabase:
 
         :param filepath: Path to the CSV file.
         """
-        # # store file, and manage read and write
-        # self.file_manager = CSVFileManager(filepath)
-        # # parse command, and process (insert, update, delete)
-        # self.data_modifier = DataModifier(self.file_manager)
-        # process check data: 
-        # self.data_filter = DataFilter(self.file_manager)
         self.lock = FairReadWriteLock()
         self.task_queue = RabbitMQQueue() if use_rabbitmq else LocalQueue()
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
@@ -90,7 +84,7 @@ class CSVDatabase:
             # if self.file_manager.data_modified:
             #     self.file_manager.write()  
                 BusinessLogic.modify_data(command)
-                self.db.write()
+            self.db.write()
 
     def query_data(self, query_str):
         """
