@@ -31,10 +31,16 @@ class RedisManager:
     def add_related_query_key(self, record_id, query_key):
         self.client.sadd(f'record_queries:{record_id}', query_key)
 
+    def remove_related_query_key(self, record_id, query_key):
+        self.client.srem(f'record_queries:{record_id}', query_key)
+
     def get_query_result(self, query_key):
         value = self.client.get(query_key)
         return json.loads(value) if value else None
 
     def set_query_result(self, query_key, record_ids, ex=None):
         self.client.set(query_key, json.dumps(record_ids), ex=ex)
+
+    def cache_null(self, key, ex=60):
+        self.client.set(key, json.dumps(None), ex=ex)
 

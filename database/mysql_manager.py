@@ -118,7 +118,7 @@ class MySQLDatabase(DatabaseInterface):
         logging.debug(f"Querying records with conditions: {query_conditions}")
         query_key = f"query:{query_conditions}"
         cached_result = self.redis.get_query_result(query_key)
-        if cached_result:
+        if cached_result is not None:
             logging.debug("Cache hit for query")
             results = []
             for record_id in cached_result:
@@ -131,6 +131,8 @@ class MySQLDatabase(DatabaseInterface):
                     if record:
                         result.append(record)
                         self.redis.set(record_id, record, ex=3600)
+                    else:
+                        self.redis.cache_null(record_key)
             return results
         else:
             session = self.Session()
@@ -196,6 +198,7 @@ class MySQLDatabase(DatabaseInterface):
         related_query_keys = self.redis.get_related_query_keys(record_id)
         for query_key in related_query_keys:
             self.redis.delete(query_key)
+            self.redis.remove_related_query_key(record_id, query_key)
 
     def get_columns(self):
         return self.column_names
