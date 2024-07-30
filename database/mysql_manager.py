@@ -1,10 +1,12 @@
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, Table, Column, String, inspect
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql.expression import and_, or_
+from sqlalchemy.orm import sessionmaker, scoped_session
 from database.database_interface import DatabaseInterface
 from database.redis_manager import RedisManager
 import time
 import logging
+import traceback
 
 Base = declarative_base()
 
@@ -12,34 +14,54 @@ class MySQLDatabase(DatabaseInterface):
     def __init__(self, db_url, table_name='record'):
         self.engine = create_engine(db_url)
         self.metadata = MetaData()
+
+        # Create table if not exists
+        inspector = inspect(self.engine)
+        if not inspector.has_table(table_name):
+            self.create_table(table_name)
+
         self.metadata.reflect(self.engine)
-        self.Session = sessionmaker(bind=self.engine)
+        self.Session = scoped_session(sessionmaker(bind=self.engine))
         self.Record = self.dynamic_table_class(table_name)
         self.column_names = [column.name for column in self.Record.__table__.columns]
         self.redis = RedisManager()
-        self.lock = threading.Lock()
         logging.debug(f"Initialized MySQLDatabase with table: {table_name}, columns: {self.column_names}")
+
+    def create_table(self, table_name):
+        table = Table(table_name, self.metadata,
+                      Column('C1', String(255), primary_key=True),
+                      Column('C2', String(255)),
+                      Column('C3', String(255))
+                      )
+        self.metadata.create_all(self.engine)
+        logging.info(f"Table '{table_name}' created successfully.")
 
     def dynamic_table_class(self, table_name):
         table = self.metadata.tables.get(table_name)
         if table is None:
             logging.error(f"Table '{table_name}' not found in the database.")
             return None
-        
+
         primary_key_columns = [col.name for col in table.primary_key.columns]
         if not primary_key_columns:
             raise ValueError(f"Table '{table_name}' does not have a primary key.")
-        
+
         logging.debug(f"Primary key columns for table '{table_name}': {primary_key_columns}")
 
-        # create ORM class
+        # Create ORM class with unique name
+        class_name = f"DynamicRecord_{table_name}_{int(time.time())}"
+
         class DynamicRecord(Base):
+            __tablename__ = table_name
             __table__ = table
-            __mapper_args__ = {
-                'primary_key': [table.c[pk] for pk in primary_key_columns]
-            }
+            __mapper_args__ = {'primary_key': [table.c[pk] for pk in primary_key_columns]}
+
+            def to_dict(self):
+                return {column.name: getattr(self, column.name) for column in self.__table__.columns}
 
         return DynamicRecord
+
+
         
     def read(self):
         logging.debug("Reading all records")
@@ -62,13 +84,44 @@ class MySQLDatabase(DatabaseInterface):
             session.add(new_record)
             session.commit()
             logging.debug("Record added successfully")
-            # update Redis cache
+
+            # Update Redis cache
             record_key = f'record:{new_record.C1}'
-            self.redis.set(record_key, new_record.to_dict())
+            record_dict = new_record.to_dict()
+            logging.debug(f"Setting Redis key: {record_key} with value: {record_dict}")
+            logging.debug(f"Record dictionary: {record_dict} of type {type(record_dict)}")
+            self.redis.set(record_key, record_dict)
             self.redis.add_to_bloom_filter(record_key)
             self._invalidate_related_query_cache(new_record.C1)
         except Exception as e:
             logging.error(f"Error adding record: {e}")
+            logging.error(traceback.format_exc())
+            session.rollback()
+        finally:
+            session.close()
+
+    def update_record(self, conditions, target_column, new_value):
+        logging.debug(f"Updating records with conditions: {conditions}, setting {target_column} to {new_value}")
+        session = self.Session()
+        try:
+            query = session.query(self.Record)
+            for key, value in conditions.items():
+                query = query.filter(getattr(self.Record, key) == value)
+            records = query.all()
+            updated_count = query.update({getattr(self.Record, target_column): new_value})
+            session.commit()
+            logging.debug(f"Updated {updated_count} records")
+
+            # Update Redis cache
+            for record in records:
+                updated_record = session.query(self.Record).filter(self.Record.C1 == record.C1).first()
+                record_dict = updated_record.to_dict()
+                logging.debug(f"Setting Redis key: record:{updated_record.C1} with value: {record_dict}")
+                self.redis.set(f'record:{updated_record.C1}', record_dict)
+                self._invalidate_related_query_cache(updated_record.C1)
+        except Exception as e:
+            logging.error(f"Error updating records: {e}")
+            logging.error(traceback.format_exc())
             session.rollback()
         finally:
             session.close()
@@ -83,35 +136,15 @@ class MySQLDatabase(DatabaseInterface):
             records = query.all()
             deleted_count = query.delete()
             session.commit()
-            logging.debug("Deleted {deleted_count} records successfully")
-            # update Redis cache
+            logging.debug(f"Deleted {deleted_count} records successfully")
+
+            # Update Redis cache
             for record in records:
+                logging.debug(f"Deleting Redis key: record:{record.C1}")
                 self.redis.delete(f'record:{record.C1}')
                 self._invalidate_related_query_cache(record.C1)
         except Exception as e:
             logging.error(f"Error deleting records: {e}")
-            session.rollback()
-        finally:
-            session.close()
-    
-    def update_record(self, conditions, target_column, new_value):
-        logging.debug(f"Updating records with conditions: {conditions}, setting {target_column} to {new_value}")
-        session = self.Session()
-        try:
-            query = session.query(self.Record)
-            for key, value in conditions.items():
-                query = query.filter(getattr(self.Record, key) == value)
-            records = query.all()
-            updated_count = query.update({getattr(self.Record, target_column): new_value})
-            session.commit()
-            logging.debug(f"Updated {updated_count} records")
-            # upate Redis cache
-            for record in records:
-                updated_record = session.query(self.Record).filter(self.Record.C1 == record.C1).first()
-                self.redis.set(f'record:{updated_record.C1}', updated_record)
-                self._invalidate_related_query_cache(updated_record.C1)
-        except Exception as e:
-            logging.error(f"Error updating records: {e}")
             session.rollback()
         finally:
             session.close()
@@ -135,7 +168,7 @@ class MySQLDatabase(DatabaseInterface):
                             record = self._query_database_by_id(record_id)
                             if record:
                                 result.append(record)
-                                self.redis.set(record_id, record, ex=3600)
+                                self.redis.set(record_id, record.to_dict(), ex=3600)
                             else:
                                 self.redis.cache_null(record_key)
                         finally:
@@ -223,6 +256,7 @@ class MySQLDatabase(DatabaseInterface):
     def _invalidate_related_query_cache(self, record_id):
         related_query_keys = self.redis.get_related_query_keys(record_id)
         for query_key in related_query_keys:
+            logging.debug(f"Deleting related Redis query key: {query_key}")
             self.redis.delete(query_key)
             self.redis.remove_related_query_key(record_id, query_key)
 

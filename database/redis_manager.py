@@ -7,6 +7,7 @@ class RedisManager:
     def __init__(self, redis_url='redis://localhost:6379/0'):
         self.client = redis.StrictRedis.from_url(redis_url)
         self.bloom_filter = ScalableBloomFilter(mode=ScalableBloomFilter.SMALL_SET_GROWTH)
+        self.lock_manager = Redlock([redis_url])
 
     def add_to_bloom_filter(self, key):
         self.bloom_filter.add(key)
@@ -51,3 +52,5 @@ class RedisManager:
     def release_lock(self, lock):
         self.lock_manager.unlock(lock)
 
+    def close(self):
+        self.client.close()
