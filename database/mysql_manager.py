@@ -3,6 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from database.database_interface import DatabaseInterface
 from database.redis_manager import RedisManager
+import time
 import logging
 
 Base = declarative_base()
@@ -16,6 +17,7 @@ class MySQLDatabase(DatabaseInterface):
         self.Record = self.dynamic_table_class(table_name)
         self.column_names = [column.name for column in self.Record.__table__.columns]
         self.redis = RedisManager()
+        self.lock = threading.Lock()
         logging.debug(f"Initialized MySQLDatabase with table: {table_name}, columns: {self.column_names}")
 
     def dynamic_table_class(self, table_name):
@@ -127,64 +129,88 @@ class MySQLDatabase(DatabaseInterface):
                 if record:
                     results.append(record)
                 else:
-                    record = self._query_database_by_id(record_id)
-                    if record:
-                        result.append(record)
-                        self.redis.set(record_id, record, ex=3600)
+                    lock = self.redis.acquire_lock(record_key)
+                    if lock:
+                        try:
+                            record = self._query_database_by_id(record_id)
+                            if record:
+                                result.append(record)
+                                self.redis.set(record_id, record, ex=3600)
+                            else:
+                                self.redis.cache_null(record_key)
+                        finally:
+                            self.redis.release_lock(lock)
                     else:
-                        self.redis.cache_null(record_key)
+                        # If lock is not acquired, retry after a short delay
+                        time.sleep(0.1)
+                        record = self.redis.get(record_key)
+                        if record:
+                            results.append(record)
             return results
         else:
-            session = self.Session()
-            try:
-                query = session.query(self.Record)
-                conditions_list = []
-                for condition in query_conditions:
-                    column, operator, value, logic = condition
-                    if operator == '==':
-                        cond = getattr(self.Record, column) == value
-                    elif operator == '!=':
-                        cond = getattr(self.Record, column) != value
-                    elif operator == '$=':
-                        cond = getattr(self.Record, column).ilike(f'%{value}%')
-                    elif operator == '&=':
-                        cond = getattr(self.Record, column).contains(value)
-                    else:
-                        raise ValueError(f"Unsupported operator: {operator}")
-                    
-                    conditions_list.append((cond, logic))
+            lock = self.redis.acquire_lock(query_key)
+            if lock:
+                try:
+                    # double check if query was cached by another thread
+                    cached_result = self.redis.get_query_result(query_key)
+                    if cached_result is not None:
+                        return [self.redis.get(f"record:{record_id}") for record_id in cached_result]
+                    session = self.Session()
+                    try:
+                        query = session.query(self.Record)
+                        conditions_list = []
+                        for condition in query_conditions:
+                            column, operator, value, logic = condition
+                            if operator == '==':
+                                cond = getattr(self.Record, column) == value
+                            elif operator == '!=':
+                                cond = getattr(self.Record, column) != value
+                            elif operator == '$=':
+                                cond = getattr(self.Record, column).ilike(f'%{value}%')
+                            elif operator == '&=':
+                                cond = getattr(self.Record, column).contains(value)
+                            else:
+                                raise ValueError(f"Unsupported operator: {operator}")
+                            
+                            conditions_list.append((cond, logic))
 
-                # Combine conditions with AND/OR logic
-                combined_conditions = []
-                current_conditions = []
-
-                for cond, logic in conditions_list:
-                    current_conditions.append(cond)
-                    if logic.lower() == 'or':
-                        combined_conditions.append(and_(*current_conditions))
+                        # Combine conditions with AND/OR logic
+                        combined_conditions = []
                         current_conditions = []
-                
-                if current_conditions:
-                    combined_conditions.append(and_(*current_conditions))
-                
-                if combined_conditions:
-                    final_condition = or_(*combined_conditions)
-                    query = query.filter(final_condition)
 
-                result = query.all()
-                logging.debug(f"Queried {len(result)} records")
-                record_ids = [record.C1 for record in result]
-                self.redis.set_query_result(query_key, record_ids, ex=3600)
-                for record in result:
-                    record_key = f"record:{record.C1}"
-                    self.redis.set(record_key, record.to_dict(), ex=3600)
-                    self.redis.add_related_query_key(record.C1, query_key)
-                return [record.to_dict() for record in result]
-            except Exception as e:
-                logging.error(f"Error querying records: {e}")
-                session.close()
-            finally:
-                session.close()
+                        for cond, logic in conditions_list:
+                            current_conditions.append(cond)
+                            if logic.lower() == 'or':
+                                combined_conditions.append(and_(*current_conditions))
+                                current_conditions = []
+                        
+                        if current_conditions:
+                            combined_conditions.append(and_(*current_conditions))
+                        
+                        if combined_conditions:
+                            final_condition = or_(*combined_conditions)
+                            query = query.filter(final_condition)
+
+                        result = query.all()
+                        logging.debug(f"Queried {len(result)} records")
+                        record_ids = [record.C1 for record in result]
+                        self.redis.set_query_result(query_key, record_ids, ex=3600)
+                        for record in result:
+                            record_key = f"record:{record.C1}"
+                            self.redis.set(record_key, record.to_dict(), ex=3600)
+                            self.redis.add_related_query_key(record.C1, query_key)
+                        return [record.to_dict() for record in result]
+                    except Exception as e:
+                        logging.error(f"Error querying records: {e}")
+                        session.close()
+                    finally:
+                        session.close()
+                finally:
+                    self.redis.release_lock(lock)
+            else:
+                # If lock is not acquired, retry after a short delay
+                time.sleep(0.1)
+                return self.query_records(query_conditions)
     
     def _query_database_by_id(self, record_id):
         session = self.Session()

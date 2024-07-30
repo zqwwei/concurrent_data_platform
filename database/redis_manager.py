@@ -1,6 +1,7 @@
 import redis
 import json
 from pybloom_live import ScalableBloomFilter
+from redlock import Redlock
 
 class RedisManager:
     def __init__(self, redis_url='redis://localhost:6379/0'):
@@ -43,4 +44,10 @@ class RedisManager:
 
     def cache_null(self, key, ex=60):
         self.client.set(key, json.dumps(None), ex=ex)
+    
+    def acquire_lock(self, lock_key, ttl=1000):
+        return self.lock_manager.lock(lock_key, ttl)
+    
+    def release_lock(self, lock):
+        self.lock_manager.unlock(lock)
 
