@@ -158,6 +158,8 @@ class MySQLDatabase(DatabaseInterface):
             results = []
             for record_id in cached_result:
                 record_key = f"record:{record_id}"
+                if self.redis.check_bloom_filter(record_key) is None:
+                    return []
                 record = self.redis.get(record_key)
                 if record:
                     results.append(record)
